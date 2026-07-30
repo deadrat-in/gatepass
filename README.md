@@ -1,4 +1,4 @@
-# LLM API Proxy
+# Gatepass LLM Proxy
 
 A lightweight, high-performance, rate-limiting, and header-spoofing reverse proxy designed for LLM APIs. 
 
@@ -12,6 +12,18 @@ If your LLM gateway enforces strict rate limits (e.g., `429 Too Many Requests`) 
 - **Client Disconnection Support:** Automatically detects if a client aborts or times out while waiting in the queue. It cancels the queue slot and refunds the reserved token so it isn't wasted on upstream calls.
 - **Dynamic Header Injection:** Inject any HTTP headers (such as `User-Agent` or custom API keys/metadata) dynamically using simple environment variables.
 - **Zero Dependencies:** Written in standard Go, compiling down to a single self-contained binary.
+
+---
+
+## Potential Use Cases
+
+This proxy acts as a centralized middleware layer between your downline services and upstream LLM providers, unlocking several key architectural patterns:
+
+* **Centralized API Key Management & Decoupling:** Instead of distributing and rotating secret upstream provider keys across all downline applications, configure downline apps to use virtual/internal keys and let the proxy swap them centrally at the edge with `API_KEY_REPLACE`.
+* **Dynamic Routing & Model Version Upgrades:** Avoid deploying configuration changes to multiple client apps when upgrading models. By configuring `MODEL_REPLACE` (e.g. mapping `gpt-3.5-turbo` to `gpt-4o-mini`), all downline requests are centrally and transparently mapped to the new model (updating request bodies and URL paths).
+* **Client Identification & Header Spoofing:** Some LLM gateways require specific HTTP headers (like a specific `User-Agent`). The proxy lets you spoof these credentials centrally to bypass access restrictions.
+* **Resiliency Against Hard Rate Limits (429s):** The token-bucket rate limiter intercepts client requests and buffers/queues them in memory when limits are reached, gradually releasing them to fit upstream quotas instead of failing downstream calls with `429 Too Many Requests`.
+* **Central Audits & Cost Analysis:** With all transaction details, response statuses, and raw bodies saved to a local SQLite database, you can centrally audit all LLM traffic, debug payloads, and compute usage costs.
 
 ---
 
@@ -49,7 +61,7 @@ go run main.go
 Build a minimal, multi-stage Docker container:
 ```bash
 # Build the container
-docker build -t llm-api-proxy .
+docker build -t gatepass .
 
 # Run the container
 docker run -d \
@@ -58,8 +70,8 @@ docker run -d \
   -e RATE_LIMIT_RPM=20 \
   -e RATE_LIMIT_BURST=5 \
   -e HEADER_User_Agent="my-custom-client/1.0" \
-  --name llm-proxy \
-  llm-api-proxy
+  --name gatepass \
+  gatepass
 ```
 
 ---
@@ -98,15 +110,15 @@ cli-tool-run
 
 To run the compiled proxy binary as a background systemd service:
 
-Create `/etc/systemd/system/llm-api-proxy.service`:
+Create `/etc/systemd/system/gatepass.service`:
 
 ```ini
 [Unit]
-Description=LLM API Proxy
+Description=Gatepass LLM Proxy
 After=network.target
 
 [Service]
-ExecStart=/usr/local/bin/llm-api-proxy
+ExecStart=/usr/local/bin/gatepass
 Restart=always
 RestartSec=3
 Environment=PROXY_TARGET_URL=https://agentrouter.org
@@ -125,27 +137,27 @@ WantedBy=default.target
 Enable and start the service:
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now llm-api-proxy
+sudo systemctl enable --now gatepass
 ```
 
 ### 2. Podman Quadlet (Containerized)
 
 If you are using Podman, you can manage the container lifecycle through systemd using a Quadlet file.
 
-Create `/etc/containers/systemd/llm-api-proxy.container` (or `~/.config/containers/systemd/llm-api-proxy.container` for rootless setup):
+Create `/etc/containers/systemd/gatepass.container` (or `~/.config/containers/systemd/gatepass.container` for rootless setup):
 
 ```ini
 [Unit]
-Description=LLM API Proxy Container
+Description=Gatepass LLM Proxy Container
 After=network.target
 
 [Container]
-Image=ghcr.io/rat-s/llm-api-proxy:latest
+Image=ghcr.io/rat-s/gatepass:latest
 PublishPort=8318:8318
 # For system-wide (runs as root, Podman will auto-create the directory):
-Volume=/srv/llm-api-proxy/data:/data:Z
+Volume=/srv/gatepass/data:/data:Z
 # For rootless (runs as user, use this instead so Podman can auto-create it in home):
-# Volume=%h/.local/share/llm-api-proxy/data:/data:Z
+# Volume=%h/.local/share/gatepass/data:/data:Z
 Environment=PROXY_TARGET_URL=https://agentrouter.org
 Environment=PROXY_PORT=8318
 #Environment=RATE_LIMIT_RPM=20
@@ -166,11 +178,11 @@ Reload systemd to generate the service unit and start it:
 ```bash
 # For system-wide:
 sudo systemctl daemon-reload
-sudo systemctl enable --now llm-api-proxy
+sudo systemctl enable --now gatepass
 
 # For rootless (run without sudo):
 systemctl --user daemon-reload
-systemctl --user enable --now llm-api-proxy
+systemctl --user enable --now gatepass
 ```
 
 ---

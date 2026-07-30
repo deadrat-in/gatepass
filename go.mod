@@ -1,4 +1,4 @@
-module github.com/anu/llm-api-proxy
+module github.com/Rat-S/gatepass
 
 go 1.25.0
 

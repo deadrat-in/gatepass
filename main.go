@@ -176,7 +176,7 @@ func main() {
 	// Initialize SQLite Database
 	dbPath := os.Getenv("PROXY_LOGS_DB")
 	if dbPath == "" {
-		dbPath = "proxy_logs.db"
+		dbPath = "gatepass.db"
 	}
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
@@ -337,7 +337,7 @@ func main() {
 		port = ":" + port
 	}
 
-	log.Printf("🚀 LLM API Proxy running on http://localhost%s", port)
+	log.Printf("🚀 Gatepass LLM Proxy running on http://localhost%s", port)
 	log.Printf("➡️ Proxy Target URL: %s", targetURL)
 
 	var handler http.Handler

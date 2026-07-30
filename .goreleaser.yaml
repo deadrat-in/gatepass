@@ -2,7 +2,7 @@
 # Ref: https://goreleaser.com
 version: 2
 
-project_name: llm-api-proxy
+project_name: gatepass
 
 before:
   hooks:

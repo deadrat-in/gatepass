@@ -1,0 +1,1304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gatepass | High-Performance LLM Gateway Proxy</title>
+  <meta name="description" content="A lightweight, high-performance, rate-limiting, and header-spoofing reverse proxy designed specifically for LLM APIs.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  
+  <style>
+    :root {
+      --bg-color: #080B11;
+      --panel-bg: rgba(16, 22, 35, 0.65);
+      --panel-border: rgba(255, 255, 255, 0.08);
+      --panel-border-active: rgba(0, 242, 254, 0.4);
+      --text-main: #F3F4F6;
+      --text-muted: #9CA3AF;
+      --accent-cyan: #00F2FE;
+      --accent-indigo: #4FACFE;
+      --accent-violet: #8F8DF2;
+      --code-bg: #0D1117;
+      --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+      --font-heading: 'Outfit', sans-serif;
+      --font-body: 'Inter', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      font-family: var(--font-body);
+      line-height: 1.6;
+      overflow-x: hidden;
+      position: relative;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: var(--bg-color);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1F2937;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--accent-indigo);
+    }
+
+    /* Canvas Background */
+    #particle-canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Navigation */
+    nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1rem 0;
+      margin-bottom: 3rem;
+      border-bottom: 1px solid var(--panel-border);
+    }
+
+    .logo {
+      font-family: var(--font-heading);
+      font-size: 1.5rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-indigo));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .logo-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--accent-cyan);
+      box-shadow: 0 0 10px var(--accent-cyan);
+      display: inline-block;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 1.5rem;
+      list-style: none;
+    }
+
+    .nav-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.95rem;
+      font-weight: 500;
+      transition: color 0.3s ease;
+    }
+
+    .nav-links a:hover {
+      color: var(--accent-cyan);
+    }
+
+    .btn-github {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--panel-border);
+      color: var(--text-main);
+      padding: 0.5rem 1rem;
+      border-radius: 99px;
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: all 0.3s ease;
+    }
+
+    .btn-github:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: var(--accent-cyan);
+      box-shadow: 0 0 15px rgba(0, 242, 254, 0.2);
+    }
+
+    /* Hero Section */
+    .hero {
+      text-align: center;
+      padding: 4rem 0;
+      margin-bottom: 4rem;
+    }
+
+    .hero h1 {
+      font-family: var(--font-heading);
+      font-size: 3.5rem;
+      font-weight: 800;
+      line-height: 1.2;
+      margin-bottom: 1.5rem;
+      background: linear-gradient(135deg, #FFF, #A5B4FC, var(--accent-cyan));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero p {
+      font-size: 1.25rem;
+      color: var(--text-muted);
+      max-width: 800px;
+      margin: 0 auto 2.5rem auto;
+      font-weight: 300;
+    }
+
+    .hero-ctas {
+      display: flex;
+      justify-content: center;
+      gap: 1rem;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-indigo));
+      color: #080B11;
+      padding: 0.8rem 1.8rem;
+      border-radius: 8px;
+      text-decoration: none;
+      font-family: var(--font-heading);
+      font-weight: 700;
+      box-shadow: 0 4px 20px rgba(0, 242, 254, 0.35);
+      transition: all 0.3s ease;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 25px rgba(0, 242, 254, 0.5);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--panel-border);
+      color: var(--text-main);
+      padding: 0.8rem 1.8rem;
+      border-radius: 8px;
+      text-decoration: none;
+      font-family: var(--font-heading);
+      font-weight: 700;
+      transition: all 0.3s ease;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: var(--text-muted);
+    }
+
+    /* Info Panels / Cards Grid */
+    .section-title {
+      font-family: var(--font-heading);
+      font-size: 2.25rem;
+      font-weight: 700;
+      margin-bottom: 1rem;
+      text-align: center;
+      letter-spacing: -0.02em;
+    }
+
+    .section-desc {
+      text-align: center;
+      color: var(--text-muted);
+      margin-bottom: 3rem;
+      max-width: 600px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 5rem;
+    }
+
+    .glass-card {
+      background: var(--panel-bg);
+      border: 1px solid var(--panel-border);
+      backdrop-filter: blur(16px);
+      border-radius: 12px;
+      padding: 2rem;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: var(--glass-shadow);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .glass-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 4px;
+      background: linear-gradient(90deg, transparent, var(--accent-cyan), transparent);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    .glass-card:hover {
+      transform: translateY(-4px);
+      border-color: var(--panel-border-active);
+      box-shadow: 0 12px 40px rgba(0, 242, 254, 0.1);
+    }
+
+    .glass-card:hover::before {
+      opacity: 1;
+    }
+
+    .card-icon {
+      font-size: 2rem;
+      margin-bottom: 1.25rem;
+      display: inline-block;
+    }
+
+    .glass-card h3 {
+      font-family: var(--font-heading);
+      font-size: 1.35rem;
+      margin-bottom: 0.75rem;
+      color: #FFF;
+    }
+
+    .glass-card p {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      font-weight: 300;
+    }
+
+    /* Configurator Form & Code Output */
+    .configurator {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2rem;
+      margin-bottom: 5rem;
+      align-items: start;
+    }
+
+    @media (max-width: 900px) {
+      .configurator {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .config-form {
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    label {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-main);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    input, select, textarea {
+      background: rgba(8, 11, 17, 0.8);
+      border: 1px solid var(--panel-border);
+      border-radius: 6px;
+      padding: 0.75rem;
+      color: var(--text-main);
+      font-family: var(--font-body);
+      font-size: 0.95rem;
+      transition: all 0.3s ease;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--accent-cyan);
+      outline: none;
+      box-shadow: 0 0 10px rgba(0, 242, 254, 0.15);
+    }
+
+    .dynamic-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .dynamic-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr auto;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .btn-icon {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+      color: #EF4444;
+      width: 38px;
+      height: 38px;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.2rem;
+      transition: all 0.3s ease;
+    }
+
+    .btn-icon:hover {
+      background: #EF4444;
+      color: #FFF;
+    }
+
+    .btn-add {
+      background: rgba(0, 242, 254, 0.08);
+      border: 1px dashed rgba(0, 242, 254, 0.3);
+      color: var(--accent-cyan);
+      padding: 0.5rem;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      font-size: 0.85rem;
+      transition: all 0.3s ease;
+    }
+
+    .btn-add:hover {
+      background: rgba(0, 242, 254, 0.15);
+      border-style: solid;
+    }
+
+    /* Output Console Panels */
+    .code-console {
+      background: var(--code-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 12px;
+      box-shadow: var(--glass-shadow);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      height: 520px;
+    }
+
+    .console-header {
+      background: rgba(255, 255, 255, 0.03);
+      padding: 0.75rem 1.25rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--panel-border);
+    }
+
+    .console-tabs {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .console-tab {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 0.4rem 0.8rem;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 600;
+      transition: all 0.3s ease;
+    }
+
+    .console-tab.active {
+      background: rgba(0, 242, 254, 0.1);
+      color: var(--accent-cyan);
+      border: 1px solid rgba(0, 242, 254, 0.2);
+    }
+
+    .btn-copy {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--panel-border);
+      color: var(--text-muted);
+      padding: 0.4rem 0.8rem;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+
+    .btn-copy:hover {
+      background: rgba(255, 255, 255, 0.15);
+      color: var(--text-main);
+    }
+
+    .console-body {
+      padding: 1.25rem;
+      flex-grow: 1;
+      overflow: auto;
+      position: relative;
+    }
+
+    .console-code {
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      color: #9ECBFF;
+      white-space: pre;
+      line-height: 1.5;
+    }
+
+    /* SQLite Logs Highlight */
+    .sqlite-showcase {
+      margin-bottom: 5rem;
+    }
+
+    .sqlite-grid {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 2rem;
+      align-items: center;
+    }
+
+    @media (max-width: 900px) {
+      .sqlite-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Tabs Component */
+    .tabs-section {
+      margin-bottom: 5rem;
+    }
+
+    .tabs-nav {
+      display: flex;
+      justify-content: center;
+      gap: 1rem;
+      margin-bottom: 2rem;
+      border-bottom: 1px solid var(--panel-border);
+      padding-bottom: 1rem;
+    }
+
+    .tab-trigger {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-family: var(--font-heading);
+      font-size: 1.2rem;
+      font-weight: 600;
+      padding: 0.5rem 1.5rem;
+      cursor: pointer;
+      position: relative;
+      transition: color 0.3s ease;
+    }
+
+    .tab-trigger.active {
+      color: var(--accent-cyan);
+    }
+
+    .tab-trigger.active::after {
+      content: '';
+      position: absolute;
+      bottom: -17px;
+      left: 0;
+      width: 100%;
+      height: 2px;
+      background: var(--accent-cyan);
+      box-shadow: 0 0 8px var(--accent-cyan);
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+      animation: fadeIn 0.4s ease forwards;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .step-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .step-item {
+      background: var(--panel-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
+      padding: 1.5rem;
+      display: flex;
+      gap: 1.25rem;
+      align-items: flex-start;
+    }
+
+    .step-num {
+      background: rgba(0, 242, 254, 0.1);
+      border: 1px solid rgba(0, 242, 254, 0.2);
+      color: var(--accent-cyan);
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-family: var(--font-heading);
+      flex-shrink: 0;
+    }
+
+    .step-body h4 {
+      font-family: var(--font-heading);
+      margin-bottom: 0.5rem;
+      color: #FFF;
+    }
+
+    .step-body p {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .code-block {
+      background: var(--code-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 6px;
+      padding: 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      overflow-x: auto;
+      color: #E2E8F0;
+    }
+
+    footer {
+      text-align: center;
+      padding: 3rem 0;
+      border-top: 1px solid var(--panel-border);
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    footer a {
+      color: var(--accent-cyan);
+      text-decoration: none;
+    }
+
+    footer a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Particle Background -->
+  <canvas id="particle-canvas"></canvas>
+
+  <div class="container">
+    
+    <!-- Navbar -->
+    <nav>
+      <div class="logo">
+        <span class="logo-dot"></span> gatepass
+      </div>
+      <a href="https://github.com/Rat-S/gatepass" target="_blank" class="btn-github">
+        <svg height="18" width="18" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+        </svg>
+        GitHub Project
+      </a>
+    </nav>
+
+    <!-- Hero Section -->
+    <header class="hero">
+      <h1>Decouple, Buffer & Spoof LLM Gateways</h1>
+      <p>A lightweight, zero-dependency reverse proxy in Go that queues incoming requests in-memory to prevent rate-limit failures, logs requests to SQLite, and injects customized headers or API keys dynamically.</p>
+      <div class="hero-ctas">
+        <a href="#playground" class="btn-primary">Configurator Playground</a>
+        <a href="#deployment" class="btn-secondary">View Deploy Guide</a>
+      </div>
+    </header>
+
+    <!-- Use Cases Grid -->
+    <section>
+      <h2 class="section-title">Core Use Cases</h2>
+      <p class="section-desc">Understand how adding this proxy centralizes controls, improves resiliency, and simplifies multi-app deployments.</p>
+      <div class="grid">
+        <div class="glass-card">
+          <span class="card-icon">🔑</span>
+          <h3>API Key Decoupling</h3>
+          <p>Remove upstream API keys (e.g. OpenAI, Anthropic) from client code. Configure downstream clients to send virtual API keys, and map them to secret upstream keys centrally on the proxy server.</p>
+        </div>
+        <div class="glass-card">
+          <span class="card-icon">🔄</span>
+          <h3>Dynamic Model Swapping</h3>
+          <p>Upgrade model versions (e.g., swapping `gpt-3.5-turbo` with `gpt-4o-mini`) centrally. The proxy intercepts requests and dynamically modifies the URL paths and payload body parameters on the fly.</p>
+        </div>
+        <div class="glass-card">
+          <span class="card-icon">🕵️</span>
+          <h3>Header Spoofing</h3>
+          <p>Bypass restrictions enforced by upstream firewalls or gateways. Spoof official SDK client signatures (e.g., custom User-Agents) and inject security context headers globally.</p>
+        </div>
+        <div class="glass-card">
+          <span class="card-icon">⌛</span>
+          <h3>Queueing Rate Limits</h3>
+          <p>Rather than failing downline applications with hard `429 Too Many Requests` errors, the proxy buffers and queues requests in-memory, releasing them gradually to fit upstream rate limits.</p>
+        </div>
+        <div class="glass-card">
+          <span class="card-icon">📊</span>
+          <h3>Centralized Auditing</h3>
+          <p>Keep a comprehensive audit log of prompt bodies, response text, costs, latencies, and HTTP status codes in a local SQLite database without embedding telemetry code into client applications.</p>
+        </div>
+        <div class="glass-card">
+          <span class="card-icon">⚡</span>
+          <h3>Zero-Dependency Binary</h3>
+          <p>Built purely in Go with zero dependencies. Runs natively, inside containers (Docker/Podman), or as a systemd service, requiring tiny resources (under 15MB RAM).</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Configurator Playground -->
+    <section id="playground" style="margin-bottom: 5rem;">
+      <h2 class="section-title">Interactive Configuration Playground</h2>
+      <p class="section-desc">Adjust variables to see changes in real-time. Copy the generated terminal commands or configuration scripts instantly.</p>
+      
+      <div class="configurator">
+        <div class="glass-card config-form">
+          <h3 style="margin-bottom: 0.5rem; border-bottom: 1px solid var(--panel-border); padding-bottom: 0.5rem;">Proxy Settings</h3>
+          
+          <div class="form-group">
+            <label for="cfg-target">Upstream LLM URL</label>
+            <input type="text" id="cfg-target" value="https://api.openai.com" placeholder="https://api.openai.com or gateway URL">
+          </div>
+          
+          <div class="form-row">
+            <div class="form-group">
+              <label for="cfg-port">Proxy Port</label>
+              <input type="text" id="cfg-port" value="8318" placeholder="8318">
+            </div>
+            <div class="form-group">
+              <label for="cfg-db">SQLite DB Path</label>
+              <input type="text" id="cfg-db" value="proxy_logs.db" placeholder="proxy_logs.db">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="cfg-rpm">Rate Limit (RPM)</label>
+              <input type="number" id="cfg-rpm" value="20" min="0">
+            </div>
+            <div class="form-group">
+              <label for="cfg-burst">Burst Limit</label>
+              <input type="number" id="cfg-burst" value="5" min="0">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Spoofed / Injected Headers</label>
+            <div id="headers-list" class="dynamic-list">
+              <div class="dynamic-row">
+                <input type="text" placeholder="User-Agent" value="User-Agent">
+                <input type="text" placeholder="Value" value="official-sdk/1.4.0">
+                <button type="button" class="btn-icon" onclick="removeRow(this)">×</button>
+              </div>
+            </div>
+            <button type="button" class="btn-add" onclick="addHeaderRow()">+ Add Custom Header</button>
+          </div>
+
+          <div class="form-group">
+            <label>API Key Replacements</label>
+            <div id="apikeys-list" class="dynamic-list">
+              <div class="dynamic-row">
+                <input type="text" placeholder="Client Key" value="dev-client-token">
+                <input type="text" placeholder="Upstream Key" value="sk-proj-xyz8921">
+                <button type="button" class="btn-icon" onclick="removeRow(this)">×</button>
+              </div>
+            </div>
+            <button type="button" class="btn-add" onclick="addApiKeyRow()">+ Add Key Replacement</button>
+          </div>
+
+          <div class="form-group">
+            <label>Model replacements</label>
+            <div id="models-list" class="dynamic-list">
+              <div class="dynamic-row">
+                <input type="text" placeholder="Requested Model" value="gpt-3.5-turbo">
+                <input type="text" placeholder="Mapped Model" value="gpt-4o-mini">
+                <button type="button" class="btn-icon" onclick="removeRow(this)">×</button>
+              </div>
+            </div>
+            <button type="button" class="btn-add" onclick="addModelRow()">+ Add Model Mapping</button>
+          </div>
+
+        </div>
+
+        <!-- Code Console Output -->
+        <div class="code-console">
+          <div class="console-header">
+            <div class="console-tabs">
+              <button class="console-tab active" onclick="switchConsoleTab('shell')">Shell Command</button>
+              <button class="console-tab" onclick="switchConsoleTab('docker')">Docker Command</button>
+              <button class="console-tab" onclick="switchConsoleTab('systemd')">Systemd Service</button>
+            </div>
+            <button class="btn-copy" onclick="copyConsoleCode()">
+              <span id="copy-icon">📋</span>
+              <span id="copy-text">Copy</span>
+            </button>
+          </div>
+          <div class="console-body">
+            <code class="console-code" id="console-output">Loading...</code>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SQLite logs -->
+    <section class="sqlite-showcase glass-card">
+      <div class="sqlite-grid">
+        <div>
+          <h2 class="section-title" style="text-align: left; margin-bottom: 1.5rem;">Central SQLite Audit Trail</h2>
+          <p style="color: var(--text-muted); margin-bottom: 1rem; font-weight: 300;">
+            The proxy automatically saves request and response bodies asynchronously. This lets you write simple SQL scripts directly on the `proxy_logs.db` file to review usage patterns or monitor errors.
+          </p>
+          <p style="color: var(--text-muted); font-weight: 300;">
+            No libraries, cloud SaaS dependencies, or complex setup needed.
+          </p>
+        </div>
+        <div>
+          <h4 style="margin-bottom: 0.5rem; color: #FFF; font-family: var(--font-heading);">Example Audit Query</h4>
+          <div class="code-block" style="white-space: pre; color: #76E4FF;">
+-- Calculate average latency & errors by route
+SELECT 
+  path, 
+  COUNT(*) as total_requests,
+  AVG(duration_ms) as avg_latency_ms,
+  SUM(CASE WHEN response_status >= 400 THEN 1 ELSE 0 END) as errors
+FROM api_logs
+GROUP BY path
+ORDER BY total_requests DESC;</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Setup Tabbed Instructions -->
+    <section id="deployment" class="tabs-section">
+      <h2 class="section-title">Deployment Options</h2>
+      <p class="section-desc">Spin up the proxy on your server, desktop, or cloud instances using your preferred environment model.</p>
+      
+      <div class="tabs-nav">
+        <button class="tab-trigger active" onclick="switchTab(event, 'native-go')">Native Go</button>
+        <button class="tab-trigger" onclick="switchTab(event, 'docker-tab')">Docker Container</button>
+        <button class="tab-trigger" onclick="switchTab(event, 'systemd-tab')">Systemd Service</button>
+        <button class="tab-trigger" onclick="switchTab(event, 'quadlet-tab')">Podman Quadlet</button>
+      </div>
+
+      <!-- Tab Native Go -->
+      <div id="native-go" class="tab-content active">
+        <ul class="step-list">
+          <li class="step-item">
+            <span class="step-num">1</span>
+            <div class="step-body">
+              <h4>Clone and Build</h4>
+              <p>Download the source code and compile the Go project into a single, compact binary.</p>
+              <div class="code-block">git clone https://github.com/Rat-S/gatepass.git
+cd gatepass
+go build -o gatepass main.go</div>
+            </div>
+          </li>
+          <li class="step-item">
+            <span class="step-num">2</span>
+            <div class="step-body">
+              <h4>Define Variables & Run</h4>
+              <p>Provide environment parameters and start the compiled executable binary.</p>
+              <div class="code-block">export PROXY_TARGET_URL="https://api.openai.com"
+export RATE_LIMIT_RPM=30
+export HEADER_User_Agent="CustomClient/2.0"
+
+./gatepass</div>
+            </div>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Tab Docker -->
+      <div id="docker-tab" class="tab-content">
+        <ul class="step-list">
+          <li class="step-item">
+            <span class="step-num">1</span>
+            <div class="step-body">
+              <h4>Build Container Image</h4>
+              <p>Generate a secure, lightweight, multi-stage image using the project's Dockerfile.</p>
+              <div class="code-block">docker build -t gatepass .</div>
+            </div>
+          </li>
+          <li class="step-item">
+            <span class="step-num">2</span>
+            <div class="step-body">
+              <h4>Run Container</h4>
+              <p>Mount the SQLite directory and run the proxy in detached mode.</p>
+              <div class="code-block">docker run -d \
+  -p 8318:8318 \
+  -v ./data:/data:Z \
+  -e PROXY_TARGET_URL="https://api.openai.com" \
+  -e PROXY_LOGS_DB="/data/logs.db" \
+  -e RATE_LIMIT_RPM=20 \
+  --name gatepass \
+  gatepass</div>
+            </div>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Tab Systemd -->
+      <div id="systemd-tab" class="tab-content">
+        <ul class="step-list">
+          <li class="step-item">
+            <span class="step-num">1</span>
+            <div class="step-body">
+              <h4>Create Service Unit</h4>
+              <p>Write a systemd configuration file inside `/etc/systemd/system/gatepass.service`:</p>
+              <div class="code-block">[Unit]
+Description=Gatepass LLM Proxy
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/gatepass
+Restart=always
+Environment=PROXY_TARGET_URL=https://api.openai.com
+Environment=PROXY_PORT=8318
+Environment=HEADER_User_Agent=CustomAgent/1.0
+Environment=API_KEY_REPLACE="internal-client-key:sk-proj-..."
+
+[Install]
+WantedBy=default.target</div>
+            </div>
+          </li>
+          <li class="step-item">
+            <span class="step-num">2</span>
+            <div class="step-body">
+              <h4>Enable and Start</h4>
+              <p>Reload systemd configurations and launch the background daemon service.</p>
+              <div class="code-block">sudo cp gatepass /usr/local/bin/
+sudo systemctl daemon-reload
+sudo systemctl enable --now gatepass</div>
+            </div>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Tab Quadlet -->
+      <div id="quadlet-tab" class="tab-content">
+        <ul class="step-list">
+          <li class="step-item">
+            <span class="step-num">1</span>
+            <div class="step-body">
+              <h4>Create Quadlet Container File</h4>
+              <p>Write a container service definition file inside `/etc/containers/systemd/gatepass.container` (or `~/.config/...` for rootless running):</p>
+              <div class="code-block">[Unit]
+Description=Gatepass LLM Proxy Container
+After=network.target
+
+[Container]
+Image=ghcr.io/rat-s/gatepass:latest
+PublishPort=8318:8318
+Volume=/srv/gatepass/data:/data:Z
+Environment=PROXY_TARGET_URL=https://api.openai.com
+Environment=PROXY_PORT=8318
+Environment=HEADER_User_Agent=CustomClient/1.0
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target</div>
+            </div>
+          </li>
+          <li class="step-item">
+            <span class="step-num">2</span>
+            <div class="step-body">
+              <h4>Reload and Activate Service</h4>
+              <p>Launch the service using standard user systemctl controls.</p>
+              <div class="code-block">systemctl --user daemon-reload
+systemctl --user enable --now gatepass</div>
+            </div>
+          </li>
+        </ul>
+      </div>
+
+    </section>
+
+    <!-- Footer -->
+    <footer>
+      <p>Released under the <a href="https://github.com/Rat-S/gatepass/blob/main/LICENSE" target="_blank">AGPLv3 License</a>. Crafted with care for high-performance proxy routing.</p>
+    </footer>
+
+  </div>
+
+  <script>
+    // Particle Canvas Animation
+    const canvas = document.getElementById('particle-canvas');
+    const ctx = canvas.getContext('2d');
+
+    let particles = [];
+    const maxParticles = 60;
+    const maxConnectionDistance = 120;
+
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+
+    class Particle {
+      constructor() {
+        this.x = Math.random() * canvas.width;
+        this.y = Math.random() * canvas.height;
+        this.vx = (Math.random() - 0.5) * 0.5;
+        this.vy = (Math.random() - 0.5) * 0.5;
+        this.size = Math.random() * 2 + 1;
+        this.color = Math.random() > 0.5 ? '#00f2fe' : '#4facfe';
+      }
+
+      update() {
+        this.x += this.vx;
+        this.y += this.vy;
+
+        // Bounce on boundaries
+        if (this.x < 0 || this.x > canvas.width) this.vx *= -1;
+        if (this.y < 0 || this.y > canvas.height) this.vy *= -1;
+      }
+
+      draw() {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fillStyle = this.color;
+        ctx.shadowBlur = 4;
+        ctx.shadowColor = this.color;
+        ctx.fill();
+        ctx.shadowBlur = 0; // reset
+      }
+    }
+
+    function initParticles() {
+      particles = [];
+      for (let i = 0; i < maxParticles; i++) {
+        particles.push(new Particle());
+      }
+    }
+
+    function animateParticles() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Draw Connections
+      for (let i = 0; i < particles.length; i++) {
+        const p1 = particles[i];
+        p1.update();
+        p1.draw();
+
+        for (let j = i + 1; j < particles.length; j++) {
+          const p2 = particles[j];
+          const dist = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+
+          if (dist < maxConnectionDistance) {
+            const alpha = (1 - dist / maxConnectionDistance) * 0.15;
+            ctx.beginPath();
+            ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.strokeStyle = `rgba(143, 141, 242, ${alpha})`;
+            ctx.lineWidth = 1;
+            ctx.stroke();
+          }
+        }
+      }
+      requestAnimationFrame(animateParticles);
+    }
+
+    window.addEventListener('resize', () => {
+      resizeCanvas();
+      initParticles();
+    });
+
+    resizeCanvas();
+    initParticles();
+    animateParticles();
+
+    // ----------------------------------------------------
+    // Tabs Functionality
+    // ----------------------------------------------------
+    function switchTab(evt, tabId) {
+      const tabContents = document.querySelectorAll('.tab-content');
+      tabContents.forEach(content => content.classList.remove('active'));
+
+      const tabTriggers = document.querySelectorAll('.tab-trigger');
+      tabTriggers.forEach(trigger => trigger.classList.remove('active'));
+
+      document.getElementById(tabId).classList.add('active');
+      evt.currentTarget.classList.add('active');
+    }
+
+    // ----------------------------------------------------
+    // Configurator Playground Logic
+    // ----------------------------------------------------
+    let activeConsoleTab = 'shell';
+
+    function addHeaderRow() {
+      const container = document.getElementById('headers-list');
+      const row = document.createElement('div');
+      row.className = 'dynamic-row';
+      row.innerHTML = `
+        <input type="text" placeholder="Header-Name" oninput="updateConfig()">
+        <input type="text" placeholder="Value" oninput="updateConfig()">
+        <button type="button" class="btn-icon" onclick="removeRow(this)">×</button>
+      `;
+      container.appendChild(row);
+      updateConfig();
+    }
+
+    // Attach row adders
+    window.addHeaderRow = addHeaderRow;
+
+    function addApiKeyRow() {
+      const container = document.getElementById('apikeys-list');
+      const row = document.createElement('div');
+      row.className = 'dynamic-row';
+      row.innerHTML = `
+        <input type="text" placeholder="Client Key" oninput="updateConfig()">
+        <input type="text" placeholder="Upstream Key" oninput="updateConfig()">
+        <button type="button" class="btn-icon" onclick="removeRow(this)">×</button>
+      `;
+      container.appendChild(row);
+      updateConfig();
+    }
+    window.addApiKeyRow = addApiKeyRow;
+
+    function addModelRow() {
+      const container = document.getElementById('models-list');
+      const row = document.createElement('div');
+      row.className = 'dynamic-row';
+      row.innerHTML = `
+        <input type="text" placeholder="Requested Model" oninput="updateConfig()">
+        <input type="text" placeholder="Mapped Model" oninput="updateConfig()">
+        <button type="button" class="btn-icon" onclick="removeRow(this)">×</button>
+      `;
+      container.appendChild(row);
+      updateConfig();
+    }
+    window.addModelRow = addModelRow;
+
+    function removeRow(btn) {
+      btn.parentElement.remove();
+      updateConfig();
+    }
+    window.removeRow = removeRow;
+
+    function getDynamicKeyMap(containerId) {
+      const list = document.getElementById(containerId);
+      const rows = list.querySelectorAll('.dynamic-row');
+      const map = {};
+      rows.forEach(row => {
+        const inputs = row.querySelectorAll('input');
+        const k = inputs[0].value.trim();
+        const v = inputs[1].value.trim();
+        if (k && v) {
+          map[k] = v;
+        }
+      });
+      return map;
+    }
+
+    function updateConfig() {
+      const target = document.getElementById('cfg-target').value.trim();
+      const port = document.getElementById('cfg-port').value.trim() || '8318';
+      const db = document.getElementById('cfg-db').value.trim();
+      const rpm = document.getElementById('cfg-rpm').value;
+      const burst = document.getElementById('cfg-burst').value;
+      
+      const headers = getDynamicKeyMap('headers-list');
+      const apiKeys = getDynamicKeyMap('apikeys-list');
+      const models = getDynamicKeyMap('models-list');
+
+      let output = '';
+
+      if (activeConsoleTab === 'shell') {
+        output += `# 1. Set environment configurations\n`;
+        output += `export PROXY_TARGET_URL="${target}"\n`;
+        output += `export PROXY_PORT="${port}"\n`;
+        if (db) output += `export PROXY_LOGS_DB="${db}"\n`;
+        if (rpm > 0) {
+          output += `export RATE_LIMIT_RPM=${rpm}\n`;
+          output += `export RATE_LIMIT_BURST=${burst}\n`;
+        }
+        
+        // Print headers
+        Object.entries(headers).forEach(([k, v]) => {
+          // Normalize header key environment variable structure
+          const envName = 'HEADER_' + k.replace(/-/g, '_');
+          output += `export ${envName}="${v}"\n`;
+        });
+
+        // Print API keys
+        if (Object.keys(apiKeys).length > 0) {
+          const keyPairs = Object.entries(apiKeys).map(([k, v]) => `${k}:${v}`).join(',');
+          output += `export API_KEY_REPLACE="${keyPairs}"\n`;
+        }
+
+        // Print Models
+        if (Object.keys(models).length > 0) {
+          const modelPairs = Object.entries(models).map(([k, v]) => `${k}:${v}`).join(',');
+          output += `export MODEL_REPLACE="${modelPairs}"\n`;
+        }
+
+        output += `\n# 2. Run the proxy server binary\n`;
+        output += `./gatepass`;
+      } 
+      
+      else if (activeConsoleTab === 'docker') {
+        output += `docker run -d \\\n`;
+        output += `  -p ${port}:${port} \\\n`;
+        if (db) {
+          output += `  -v ./data:/data:Z \\\n`;
+          output += `  -e PROXY_LOGS_DB="/data/${db}" \\\n`;
+        }
+        output += `  -e PROXY_TARGET_URL="${target}" \\\n`;
+        output += `  -e PROXY_PORT="${port}" \\\n`;
+        if (rpm > 0) {
+          output += `  -e RATE_LIMIT_RPM=${rpm} \\\n`;
+          output += `  -e RATE_LIMIT_BURST=${burst} \\\n`;
+        }
+        
+        Object.entries(headers).forEach(([k, v]) => {
+          const envName = 'HEADER_' + k.replace(/-/g, '_');
+          output += `  -e ${envName}="${v}" \\\n`;
+        });
+
+        if (Object.keys(apiKeys).length > 0) {
+          const keyPairs = Object.entries(apiKeys).map(([k, v]) => `${k}:${v}`).join(',');
+          output += `  -e API_KEY_REPLACE="${keyPairs}" \\\n`;
+        }
+
+        if (Object.keys(models).length > 0) {
+          const modelPairs = Object.entries(models).map(([k, v]) => `${k}:${v}`).join(',');
+          output += `  -e MODEL_REPLACE="${modelPairs}" \\\n`;
+        }
+
+        output += `  --name gatepass \\\n`;
+        output += `  rat-s/gatepass:latest`;
+      } 
+      
+      else if (activeConsoleTab === 'systemd') {
+        output += `[Unit]\n`;
+        output += `Description=Gatepass LLM Proxy Service\n`;
+        output += `After=network.target\n\n`;
+        output += `[Service]\n`;
+        output += `ExecStart=/usr/local/bin/gatepass\n`;
+        output += `Restart=always\n`;
+        output += `Environment=PROXY_TARGET_URL=${target}\n`;
+        output += `Environment=PROXY_PORT=${port}\n`;
+        if (db) output += `Environment=PROXY_LOGS_DB=${db}\n`;
+        if (rpm > 0) {
+          output += `Environment=RATE_LIMIT_RPM=${rpm}\n`;
+          output += `Environment=RATE_LIMIT_BURST=${burst}\n`;
+        }
+        
+        Object.entries(headers).forEach(([k, v]) => {
+          const envName = 'HEADER_' + k.replace(/-/g, '_');
+          output += `Environment="${envName}=${v}"\n`;
+        });
+
+        if (Object.keys(apiKeys).length > 0) {
+          const keyPairs = Object.entries(apiKeys).map(([k, v]) => `${k}:${v}`).join(',');
+          output += `Environment="API_KEY_REPLACE=${keyPairs}"\n`;
+        }
+
+        if (Object.keys(models).length > 0) {
+          const modelPairs = Object.entries(models).map(([k, v]) => `${k}:${v}`).join(',');
+          output += `Environment="MODEL_REPLACE=${modelPairs}"\n`;
+        }
+
+        output += `\n[Install]\n`;
+        output += `WantedBy=default.target`;
+      }
+
+      document.getElementById('console-output').textContent = output;
+    }
+    window.updateConfig = updateConfig;
+
+    function switchConsoleTab(tabType) {
+      activeConsoleTab = tabType;
+      
+      const tabs = document.querySelectorAll('.console-tab');
+      tabs.forEach(tab => tab.classList.remove('active'));
+      
+      // Match selection
+      const activeIdx = tabType === 'shell' ? 0 : tabType === 'docker' ? 1 : 2;
+      tabs[activeIdx].classList.add('active');
+      
+      updateConfig();
+    }
+    window.switchConsoleTab = switchConsoleTab;
+
+    function copyConsoleCode() {
+      const codeText = document.getElementById('console-output').textContent;
+      navigator.clipboard.writeText(codeText).then(() => {
+        const textSpan = document.getElementById('copy-text');
+        const iconSpan = document.getElementById('copy-icon');
+        
+        textSpan.textContent = 'Copied!';
+        iconSpan.textContent = '✅';
+        
+        setTimeout(() => {
+          textSpan.textContent = 'Copy';
+          iconSpan.textContent = '📋';
+        }, 2000);
+      });
+    }
+    window.copyConsoleCode = copyConsoleCode;
+
+    // Attach listeners to static inputs
+    document.getElementById('cfg-target').addEventListener('input', updateConfig);
+    document.getElementById('cfg-port').addEventListener('input', updateConfig);
+    document.getElementById('cfg-db').addEventListener('input', updateConfig);
+    document.getElementById('cfg-rpm').addEventListener('input', updateConfig);
+    document.getElementById('cfg-burst').addEventListener('input', updateConfig);
+
+    // Initial output load
+    updateConfig();
+  </script>
+</body>
+</html>
