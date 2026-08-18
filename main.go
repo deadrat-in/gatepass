@@ -11,9 +11,12 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"syscall"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -118,6 +121,25 @@ func (rl *RateLimiter) refund() {
 	log.Printf("[RateLimiter] ↩️ Request cancelled. Token refunded and queue adjusted.")
 }
 
+// atomicMap provides thread-safe atomic reads and swaps for a string map.
+type atomicMap struct {
+	v atomic.Value
+}
+
+func newAtomicMap(m map[string]string) *atomicMap {
+	a := &atomicMap{}
+	a.v.Store(m)
+	return a
+}
+
+func (a *atomicMap) Load() map[string]string {
+	return a.v.Load().(map[string]string)
+}
+
+func (a *atomicMap) Store(m map[string]string) {
+	a.v.Store(m)
+}
+
 func getEnvInt(key string, defaultVal int) int {
 	if val, ok := os.LookupEnv(key); ok {
 		if i, err := strconv.Atoi(val); err == nil {
@@ -146,14 +168,6 @@ func rateLimitMiddleware(limiter *RateLimiter, next http.Handler) http.Handler {
 func main() {
 	// 1. Load configuration
 	targetURL := os.Getenv("PROXY_TARGET_URL")
-	if targetURL == "" {
-		log.Fatal("FATAL: PROXY_TARGET_URL environment variable is required.")
-	}
-
-	target, err := url.Parse(targetURL)
-	if err != nil {
-		log.Fatalf("FATAL: Failed to parse PROXY_TARGET_URL '%s': %v", targetURL, err)
-	}
 
 	modelReplaceEnv := os.Getenv("MODEL_REPLACE")
 	modelReplacements := parseModelReplacements(modelReplaceEnv)
@@ -172,6 +186,70 @@ func main() {
 			log.Printf("   - %s -> %s", maskKey(k), maskKey(v))
 		}
 	}
+
+	// 1b. OAuth Token Management (optional)
+	var oauthCfg *OAuthConfig
+	var oauthToken *OAuthToken
+	var oauthReplacements map[string]string
+
+	oauthCfg = LoadOAuthConfig()
+	if oauthCfg != nil {
+		log.Printf("🔐 OAuth mode enabled (auth file: %s)", oauthCfg.AuthPath)
+
+		var err error
+		oauthToken, err = ReadAuthFile(oauthCfg)
+		if err != nil {
+			log.Fatalf("FATAL: Failed to read OAuth auth file: %v", err)
+		}
+
+		log.Printf("🔑 OAuth token loaded, expires %s", oauthToken.Expires().Format(time.RFC3339))
+
+		// If token is already expired at startup, try to refresh immediately
+		if oauthToken.IsExpired(0) {
+			log.Printf("⚠️ OAuth token already expired, attempting refresh...")
+			newToken, err := RefreshToken(oauthCfg, oauthToken.Refresh())
+			if err != nil {
+				log.Printf("⚠️ OAuth refresh failed: %v (will use expired token)", err)
+			} else {
+				oauthToken.update(newToken.access, newToken.refresh, newToken.expires)
+				if err := WriteAuthFile(oauthCfg, oauthToken); err != nil {
+					log.Printf("⚠️ Failed to write refreshed token: %v", err)
+				}
+				log.Printf("✅ OAuth token refreshed at startup, expires %s", oauthToken.Expires().Format(time.RFC3339))
+			}
+		}
+
+		// Inject OAuth token as wildcard API key replacement
+		oauthReplacements = map[string]string{
+			"*": oauthToken.Access(),
+		}
+		log.Printf("🔑 OAuth token injected as wildcard API key")
+
+		// Override PROXY_TARGET_URL if OAUTH_PROXY_TARGET_URL is set
+		if oauthCfg.ProxyTargetURL != "" {
+			targetURL = oauthCfg.ProxyTargetURL
+			log.Printf("➡️ OAuth proxy target override: %s", targetURL)
+		}
+	}
+
+	// Validate and parse target URL (may have been set by OAuth config)
+	if targetURL == "" {
+		log.Fatal("FATAL: PROXY_TARGET_URL or OAUTH_PROXY_TARGET_URL must be set.")
+	}
+
+	target, err := url.Parse(targetURL)
+	if err != nil {
+		log.Fatalf("FATAL: Failed to parse target URL '%s': %v", targetURL, err)
+	}
+
+	// Merge OAuth replacements into apiKeyReplacements
+	if len(oauthReplacements) > 0 {
+		for k, v := range oauthReplacements {
+			apiKeyReplacements[k] = v
+		}
+	}
+
+	atomicKeyReplacements := newAtomicMap(apiKeyReplacements)
 
 	// Initialize SQLite Database
 	dbPath := os.Getenv("PROXY_LOGS_DB")
@@ -262,8 +340,8 @@ func main() {
 		}
 
 		// Perform dynamic API key replacements if configured
-		if len(apiKeyReplacements) > 0 {
-			replaceAPIKeys(req, apiKeyReplacements)
+		if currentKeyReplacements := atomicKeyReplacements.Load(); len(currentKeyReplacements) > 0 {
+			replaceAPIKeys(req, currentKeyReplacements)
 		}
 	}
 
@@ -361,6 +439,42 @@ func main() {
 		}
 	} else {
 		log.Printf("ℹ️ No headers configured to inject.")
+	}
+
+	// 6. OAuth background refresh + SIGHUP reload (if OAuth mode enabled)
+	if oauthCfg != nil && oauthToken != nil {
+		// Background refresh (optional, only if OAUTH_REFRESH_INTERVAL > 0)
+		stopRefresh := make(chan struct{})
+		StartRefreshLoop(oauthCfg, oauthToken, stopRefresh)
+		defer close(stopRefresh)
+
+		// SIGHUP handler for manual token reload
+		sighup := make(chan os.Signal, 1)
+		signal.Notify(sighup, syscall.SIGHUP)
+		go func() {
+			for range sighup {
+				log.Printf("[OAuth] 📥 SIGHUP received, reloading auth file...")
+				changed, err := ReloadToken(oauthCfg, oauthToken)
+				if err != nil {
+					log.Printf("[OAuth] ⚠️ Reload failed: %v", err)
+					continue
+				}
+				if changed {
+					// Update the atomic map with the new token
+					current := atomicKeyReplacements.Load()
+					updated := make(map[string]string, len(current))
+					for k, v := range current {
+						updated[k] = v
+					}
+					updated["*"] = oauthToken.Access()
+					atomicKeyReplacements.Store(updated)
+					log.Printf("[OAuth] ✅ Token reloaded, expires %s", oauthToken.Expires().Format(time.RFC3339))
+				} else {
+					log.Printf("[OAuth] ℹ️ No changes detected in auth file")
+				}
+			}
+		}()
+		log.Printf("[OAuth] 💡 Send SIGHUP (kill -HUP <pid>) to reload token from auth file")
 	}
 
 	if err := http.ListenAndServe(port, handler); err != nil {

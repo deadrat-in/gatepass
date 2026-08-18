@@ -739,6 +739,11 @@
           <p>Keep a comprehensive audit log of prompt bodies, response text, costs, latencies, and HTTP status codes in a local SQLite database without embedding telemetry code into client applications.</p>
         </div>
         <div class="glass-card">
+          <span class="card-icon">🔐</span>
+          <h3>OAuth Token Gateway</h3>
+          <p>Read OAuth tokens from CLI tool auth files, refresh them before expiry, and inject them as upstream API keys. Downline services never need to know about OAuth. Hot-reload with SIGHUP — no restart required.</p>
+        </div>
+        <div class="glass-card">
           <span class="card-icon">⚡</span>
           <h3>Zero-Dependency Binary</h3>
           <p>Built purely in Go with zero dependencies. Runs natively, inside containers (Docker/Podman), or as a systemd service, requiring tiny resources (under 15MB RAM).</p>
@@ -816,6 +821,30 @@
               </div>
             </div>
             <button type="button" class="btn-add" onclick="addModelRow()">+ Add Model Mapping</button>
+          </div>
+
+          <div class="form-group" style="border-top: 1px solid var(--panel-border); padding-top: 1rem; margin-top: 0.5rem;">
+            <label>OAuth Token Management (Optional)</label>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="cfg-oauth-auth" style="font-size: 0.75rem; text-transform: none; letter-spacing: 0;">Auth JSON Path</label>
+                <input type="text" id="cfg-oauth-auth" placeholder="/path/to/auth.json" oninput="updateConfig()">
+              </div>
+              <div class="form-group">
+                <label for="cfg-oauth-url" style="font-size: 0.75rem; text-transform: none; letter-spacing: 0;">Token Refresh URL</label>
+                <input type="text" id="cfg-oauth-url" placeholder="https://example.com/auth/device/token" oninput="updateConfig()">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="cfg-oauth-client" style="font-size: 0.75rem; text-transform: none; letter-spacing: 0;">Client ID</label>
+                <input type="text" id="cfg-oauth-client" placeholder="my-cli-client" oninput="updateConfig()">
+              </div>
+              <div class="form-group">
+                <label for="cfg-oauth-target" style="font-size: 0.75rem; text-transform: none; letter-spacing: 0;">Proxy Target Override</label>
+                <input type="text" id="cfg-oauth-target" placeholder="https://example.com/zen/v1" oninput="updateConfig()">
+              </div>
+            </div>
           </div>
 
         </div>
@@ -1235,6 +1264,19 @@ systemctl --user enable --now gatepass</div>
           output += `export MODEL_REPLACE="${modelPairs}"\n`;
         }
 
+        // Print OAuth config
+        const oauthAuth = document.getElementById('cfg-oauth-auth').value.trim();
+        const oauthUrl = document.getElementById('cfg-oauth-url').value.trim();
+        const oauthClient = document.getElementById('cfg-oauth-client').value.trim();
+        const oauthTarget = document.getElementById('cfg-oauth-target').value.trim();
+        if (oauthAuth) {
+          output += `\n# OAuth Token Management\n`;
+          output += `export OAUTH_AUTH_PATH="${oauthAuth}"\n`;
+          if (oauthUrl) output += `export OAUTH_TOKEN_URL="${oauthUrl}"\n`;
+          if (oauthClient) output += `export OAUTH_CLIENT_ID="${oauthClient}"\n`;
+          if (oauthTarget) output += `export OAUTH_PROXY_TARGET_URL="${oauthTarget}"\n`;
+        }
+
         output += `\n# 2. Run the proxy server binary\n`;
         output += `./gatepass`;
       } 
@@ -1266,6 +1308,18 @@ systemctl --user enable --now gatepass</div>
         if (Object.keys(models).length > 0) {
           const modelPairs = Object.entries(models).map(([k, v]) => `${k}:${v}`).join(',');
           output += `  -e MODEL_REPLACE="${modelPairs}" \\\n`;
+        }
+
+        // OAuth config for Docker
+        const oauthAuthD = document.getElementById('cfg-oauth-auth').value.trim();
+        const oauthUrlD = document.getElementById('cfg-oauth-url').value.trim();
+        const oauthClientD = document.getElementById('cfg-oauth-client').value.trim();
+        const oauthTargetD = document.getElementById('cfg-oauth-target').value.trim();
+        if (oauthAuthD) {
+          output += `  -e OAUTH_AUTH_PATH="${oauthAuthD}" \\\n`;
+          if (oauthUrlD) output += `  -e OAUTH_TOKEN_URL="${oauthUrlD}" \\\n`;
+          if (oauthClientD) output += `  -e OAUTH_CLIENT_ID="${oauthClientD}" \\\n`;
+          if (oauthTargetD) output += `  -e OAUTH_PROXY_TARGET_URL="${oauthTargetD}" \\\n`;
         }
 
         output += `  --name gatepass \\\n`;
@@ -1300,6 +1354,18 @@ systemctl --user enable --now gatepass</div>
         if (Object.keys(models).length > 0) {
           const modelPairs = Object.entries(models).map(([k, v]) => `${k}:${v}`).join(',');
           output += `Environment="MODEL_REPLACE=${modelPairs}"\n`;
+        }
+
+        // OAuth config for Systemd
+        const oauthAuthS = document.getElementById('cfg-oauth-auth').value.trim();
+        const oauthUrlS = document.getElementById('cfg-oauth-url').value.trim();
+        const oauthClientS = document.getElementById('cfg-oauth-client').value.trim();
+        const oauthTargetS = document.getElementById('cfg-oauth-target').value.trim();
+        if (oauthAuthS) {
+          output += `Environment="OAUTH_AUTH_PATH=${oauthAuthS}"\n`;
+          if (oauthUrlS) output += `Environment="OAUTH_TOKEN_URL=${oauthUrlS}"\n`;
+          if (oauthClientS) output += `Environment="OAUTH_CLIENT_ID=${oauthClientS}"\n`;
+          if (oauthTargetS) output += `Environment="OAUTH_PROXY_TARGET_URL=${oauthTargetS}"\n`;
         }
 
         output += `\n[Install]\n`;
@@ -1347,6 +1413,10 @@ systemctl --user enable --now gatepass</div>
     document.getElementById('cfg-db').addEventListener('input', updateConfig);
     document.getElementById('cfg-rpm').addEventListener('input', updateConfig);
     document.getElementById('cfg-burst').addEventListener('input', updateConfig);
+    document.getElementById('cfg-oauth-auth').addEventListener('input', updateConfig);
+    document.getElementById('cfg-oauth-url').addEventListener('input', updateConfig);
+    document.getElementById('cfg-oauth-client').addEventListener('input', updateConfig);
+    document.getElementById('cfg-oauth-target').addEventListener('input', updateConfig);
 
     // Initial output load
     updateConfig();

@@ -11,6 +11,7 @@ If your LLM gateway enforces strict rate limits (e.g., `429 Too Many Requests`) 
 - **Token Bucket Rate Limiting with Reservation:** Smooths out incoming request spikes. If you hit your rate limit, the proxy buffers and queues the request in memory rather than returning a `429` error.
 - **Client Disconnection Support:** Automatically detects if a client aborts or times out while waiting in the queue. It cancels the queue slot and refunds the reserved token so it isn't wasted on upstream calls.
 - **Dynamic Header Injection:** Inject any HTTP headers (such as `User-Agent` or custom API keys/metadata) dynamically using simple environment variables.
+- **OAuth Token Management:** Read OAuth tokens from an `auth.json` file created by an external CLI tool. The proxy handles token refresh, expiry detection, and hot-reload via SIGHUP — no restart required.
 - **Zero Dependencies:** Written in standard Go, compiling down to a single self-contained binary.
 
 ---
@@ -22,6 +23,7 @@ This proxy acts as a centralized middleware layer between your downline services
 * **Centralized API Key Management & Decoupling:** Instead of distributing and rotating secret upstream provider keys across all downline applications, configure downline apps to use virtual/internal keys and let the proxy swap them centrally at the edge with `API_KEY_REPLACE`.
 * **Dynamic Routing & Model Version Upgrades:** Avoid deploying configuration changes to multiple client apps when upgrading models. By configuring `MODEL_REPLACE` (e.g. mapping `gpt-3.5-turbo` to `gpt-4o-mini`), all downline requests are centrally and transparently mapped to the new model (updating request bodies and URL paths).
 * **Client Identification & Header Spoofing:** Some LLM gateways require specific HTTP headers (like a specific `User-Agent`). The proxy lets you spoof these credentials centrally to bypass access restrictions.
+* **OAuth Token Gateway:** If you use CLI tools that authenticate via OAuth device flow (e.g., tools that store tokens in `auth.json`), the proxy can read those tokens, refresh them before expiry, and inject them as upstream API keys. Downline services never need to know about OAuth — they just send a virtual key, and the proxy swaps it for the live OAuth token. Send `SIGHUP` to hot-reload a refreshed token without restarting.
 * **Resiliency Against Hard Rate Limits (429s):** The token-bucket rate limiter intercepts client requests and buffers/queues them in memory when limits are reached, gradually releasing them to fit upstream quotas instead of failing downstream calls with `429 Too Many Requests`.
 * **Central Audits & Cost Analysis:** With all transaction details, response statuses, and raw bodies saved to a local SQLite database, you can centrally audit all LLM traffic, debug payloads, and compute usage costs.
 
@@ -40,6 +42,15 @@ Configure the proxy at runtime using the following environment variables:
 | `HEADER_<NAME>` | Injects an HTTP header named `NAME` with the specified value. Single underscores are replaced with hyphens (e.g., `HEADER_User_Agent` maps to `User-Agent`). | *None* |
 | `INJECT_HEADERS_JSON` | A JSON-formatted string representing a key-value map of headers to inject (useful for complex headers). | *None* |
 | `API_KEY_REPLACE` | Maps client API keys to upstream API keys. Replaces keys in standard headers (`Authorization`, `api-key`, `x-api-key`) and query parameters (`key`, `api_key`, `api-key`). Supports comma-separated format (e.g. `client-key-1:upstream-key-1`) or JSON format. | *None* |
+| `OAUTH_AUTH_PATH` | Path to an `auth.json` file created by an external CLI tool. Enables OAuth token management mode. When set, the proxy reads the token, injects it as the upstream API key, and optionally refreshes it before expiry. | *None* |
+| `OAUTH_TOKEN_URL` | OAuth token refresh endpoint. Required when `OAUTH_AUTH_PATH` is set. The proxy POSTs here with `grant_type=refresh_token` when the token is near expiry. | *None* |
+| `OAUTH_CLIENT_ID` | OAuth client ID sent in refresh requests. | *None* |
+| `OAUTH_PROXY_TARGET_URL` | Overrides `PROXY_TARGET_URL` when OAuth mode is enabled. Useful when the OAuth provider also serves as the proxy target. | *None* |
+| `OAUTH_REFRESH_INTERVAL` | Background refresh interval in minutes. `0` = disabled (token only refreshed on startup if expired). | `0` |
+| `OAUTH_EAGER_REFRESH_SECONDS` | How many seconds before expiry to trigger a refresh. | `300` |
+| `OAUTH_FIELD_ACCESS` | JSON key for the access token in `auth.json`. | `access` |
+| `OAUTH_FIELD_REFRESH` | JSON key for the refresh token in `auth.json`. | `refresh` |
+| `OAUTH_FIELD_EXPIRES` | JSON key for the expiry timestamp in `auth.json`. | `expires` |
 
 ---
 
@@ -100,6 +111,61 @@ Point your client tool's base URL to the local proxy:
 export UPSTREAM_BASE_URL="http://localhost:8318"
 export UPSTREAM_API_KEY="your-api-key"
 cli-tool-run
+```
+
+---
+
+## Example: OAuth Token Gateway
+
+If you use a CLI tool that authenticates via OAuth (e.g., device code flow) and stores tokens in `auth.json`, the proxy can manage those tokens transparently.
+
+### 1. Authenticate with the CLI Tool
+```bash
+# Use the tool's built-in login (one-time)
+some-cli-tool account login
+# This creates ~/.local/share/some-tool/auth.json
+```
+
+### 2. Run the Proxy
+```bash
+export OAUTH_AUTH_PATH="$HOME/.local/share/some-tool/auth.json"
+export OAUTH_TOKEN_URL="https://example.com/auth/device/token"
+export OAUTH_CLIENT_ID="my-cli-client"
+export OAUTH_PROXY_TARGET_URL="https://example.com/zen/v1"
+
+# Optional: enable background refresh every 30 minutes
+export OAUTH_REFRESH_INTERVAL=30
+
+./gatepass
+```
+
+### 3. Configure Your Client
+Point downstream services at the proxy. They don't need to know about OAuth:
+```bash
+export ANTHROPIC_BASE_URL="http://localhost:8318"
+export DEFAULT_MODEL="anthropic/claude-sonnet-4"
+```
+
+### 4. Hot-Reload Tokens
+If the CLI tool refreshes its token externally, reload without restarting:
+```bash
+kill -HUP $(pgrep gatepass)
+```
+
+### Expected `auth.json` Format
+```json
+{
+  "access": "tok_abc123",
+  "refresh": "ref_xyz789",
+  "expires": "2026-12-31T23:59:59Z"
+}
+```
+
+If your tool uses different field names, configure them:
+```bash
+export OAUTH_FIELD_ACCESS=token
+export OAUTH_FIELD_REFRESH=refresh_token
+export OAUTH_FIELD_EXPIRES=expiry
 ```
 
 ---
