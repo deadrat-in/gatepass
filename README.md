@@ -1,6 +1,6 @@
 # Gatepass LLM Proxy
 
-A lightweight, high-performance, rate-limiting, and header-spoofing reverse proxy designed for LLM APIs. 
+A lightweight, high-performance, rate-limiting, and header-spoofing reverse proxy designed for LLM APIs.
 
 If your LLM gateway enforces strict rate limits (e.g., `429 Too Many Requests`) or restricts API access to specific developer clients, this proxy lets you **queue incoming requests** in memory and **inject required spoofed headers** (such as specific `User-Agent` or custom authentication metadata) before forwarding them upstream.
 
@@ -20,12 +20,12 @@ If your LLM gateway enforces strict rate limits (e.g., `429 Too Many Requests`) 
 
 This proxy acts as a centralized middleware layer between your downline services and upstream LLM providers, unlocking several key architectural patterns:
 
-* **Centralized API Key Management & Decoupling:** Instead of distributing and rotating secret upstream provider keys across all downline applications, configure downline apps to use virtual/internal keys and let the proxy swap them centrally at the edge with `API_KEY_REPLACE`.
-* **Dynamic Routing & Model Version Upgrades:** Avoid deploying configuration changes to multiple client apps when upgrading models. By configuring `MODEL_REPLACE` (e.g. mapping `gpt-3.5-turbo` to `gpt-4o-mini`), all downline requests are centrally and transparently mapped to the new model (updating request bodies and URL paths).
-* **Client Identification & Header Spoofing:** Some LLM gateways require specific HTTP headers (like a specific `User-Agent`). The proxy lets you spoof these credentials centrally to bypass access restrictions.
-* **OAuth Token Gateway:** If you use CLI tools that authenticate via OAuth device flow (e.g., tools that store tokens in `auth.json`), the proxy can read those tokens, refresh them before expiry, and inject them as upstream API keys. Downline services never need to know about OAuth — they just send a virtual key, and the proxy swaps it for the live OAuth token. Send `SIGHUP` to hot-reload a refreshed token without restarting.
-* **Resiliency Against Hard Rate Limits (429s):** The token-bucket rate limiter intercepts client requests and buffers/queues them in memory when limits are reached, gradually releasing them to fit upstream quotas instead of failing downstream calls with `429 Too Many Requests`.
-* **Central Audits & Cost Analysis:** With all transaction details, response statuses, and raw bodies saved to a local SQLite database, you can centrally audit all LLM traffic, debug payloads, and compute usage costs.
+- **Centralized API Key Management & Decoupling:** Instead of distributing and rotating secret upstream provider keys across all downline applications, configure downline apps to use virtual/internal keys and let the proxy swap them centrally at the edge with `API_KEY_REPLACE`.
+- **Dynamic Routing & Model Version Upgrades:** Avoid deploying configuration changes to multiple client apps when upgrading models. By configuring `MODEL_REPLACE` (e.g. mapping `gpt-3.5-turbo` to `gpt-4o-mini`), all downline requests are centrally and transparently mapped to the new model (updating request bodies and URL paths).
+- **Client Identification & Header Spoofing:** Some LLM gateways require specific HTTP headers (like a specific `User-Agent`). The proxy lets you spoof these credentials centrally to bypass access restrictions.
+- **OAuth Token Gateway:** If you use CLI tools that authenticate via OAuth device flow (e.g., tools that store tokens in `auth.json`), the proxy can read those tokens, refresh them before expiry, and inject them as upstream API keys. Downline services never need to know about OAuth — they just send a virtual key, and the proxy swaps it for the live OAuth token. Send `SIGHUP` to hot-reload a refreshed token without restarting.
+- **Resiliency Against Hard Rate Limits (429s):** The token-bucket rate limiter intercepts client requests and buffers/queues them in memory when limits are reached, gradually releasing them to fit upstream quotas instead of failing downstream calls with `429 Too Many Requests`.
+- **Central Audits & Cost Analysis:** With all transaction details, response statuses, and raw bodies saved to a local SQLite database, you can centrally audit all LLM traffic, debug payloads, and compute usage costs.
 
 ---
 
@@ -33,31 +33,33 @@ This proxy acts as a centralized middleware layer between your downline services
 
 Configure the proxy at runtime using the following environment variables:
 
-| Variable | Description | Default |
-| :--- | :--- | :--- |
-| `PROXY_TARGET_URL` | **Required.** The upstream LLM API base URL to proxy requests to (e.g., `https://api.openai.com` or any custom gateway). | *None* |
-| `PROXY_PORT` | The port the proxy server will listen on. | `8318` |
-| `RATE_LIMIT_RPM` | Requests per minute to allow. | `20` |
-| `RATE_LIMIT_BURST` | The maximum burst capacity (tokens) allowed before queuing kicks in. | `5` |
-| `HEADER_<NAME>` | Injects an HTTP header named `NAME` with the specified value. Single underscores are replaced with hyphens (e.g., `HEADER_User_Agent` maps to `User-Agent`). | *None* |
-| `INJECT_HEADERS_JSON` | A JSON-formatted string representing a key-value map of headers to inject (useful for complex headers). | *None* |
-| `API_KEY_REPLACE` | Maps client API keys to upstream API keys. Replaces keys in standard headers (`Authorization`, `api-key`, `x-api-key`) and query parameters (`key`, `api_key`, `api-key`). Supports comma-separated format (e.g. `client-key-1:upstream-key-1`) or JSON format. | *None* |
-| `OAUTH_AUTH_PATH` | Path to an `auth.json` file created by an external CLI tool. Enables OAuth token management mode. When set, the proxy reads the token, injects it as the upstream API key, and optionally refreshes it before expiry. | *None* |
-| `OAUTH_TOKEN_URL` | OAuth token refresh endpoint. Required when `OAUTH_AUTH_PATH` is set. The proxy POSTs here with `grant_type=refresh_token` when the token is near expiry. | *None* |
-| `OAUTH_CLIENT_ID` | OAuth client ID sent in refresh requests. | *None* |
-| `OAUTH_PROXY_TARGET_URL` | Overrides `PROXY_TARGET_URL` when OAuth mode is enabled. Useful when the OAuth provider also serves as the proxy target. | *None* |
-| `OAUTH_REFRESH_INTERVAL` | Background refresh interval in minutes. `0` = disabled (token only refreshed on startup if expired). | `0` |
-| `OAUTH_EAGER_REFRESH_SECONDS` | How many seconds before expiry to trigger a refresh. | `300` |
-| `OAUTH_FIELD_ACCESS` | JSON key for the access token in `auth.json`. | `access` |
-| `OAUTH_FIELD_REFRESH` | JSON key for the refresh token in `auth.json`. | `refresh` |
-| `OAUTH_FIELD_EXPIRES` | JSON key for the expiry timestamp in `auth.json`. | `expires` |
+| Variable                      | Description                                                                                                                                                                                                                                                     | Default   |
+| :---------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :-------- |
+| `PROXY_TARGET_URL`            | **Required.** The upstream LLM API base URL to proxy requests to (e.g., `https://api.openai.com` or any custom gateway).                                                                                                                                        | _None_    |
+| `PROXY_PORT`                  | The port the proxy server will listen on.                                                                                                                                                                                                                       | `8318`    |
+| `RATE_LIMIT_RPM`              | Requests per minute to allow.                                                                                                                                                                                                                                   | `20`      |
+| `RATE_LIMIT_BURST`            | The maximum burst capacity (tokens) allowed before queuing kicks in.                                                                                                                                                                                            | `5`       |
+| `HEADER_<NAME>`               | Injects an HTTP header named `NAME` with the specified value. Single underscores are replaced with hyphens (e.g., `HEADER_User_Agent` maps to `User-Agent`).                                                                                                    | _None_    |
+| `INJECT_HEADERS_JSON`         | A JSON-formatted string representing a key-value map of headers to inject (useful for complex headers).                                                                                                                                                         | _None_    |
+| `API_KEY_REPLACE`             | Maps client API keys to upstream API keys. Replaces keys in standard headers (`Authorization`, `api-key`, `x-api-key`) and query parameters (`key`, `api_key`, `api-key`). Supports comma-separated format (e.g. `client-key-1:upstream-key-1`) or JSON format. | _None_    |
+| `OAUTH_AUTH_PATH`             | Path to an `auth.json` file created by an external CLI tool. Enables OAuth token management mode. When set, the proxy reads the token, injects it as the upstream API key, and optionally refreshes it before expiry.                                           | _None_    |
+| `OAUTH_TOKEN_URL`             | OAuth token refresh endpoint. Required when `OAUTH_AUTH_PATH` is set. The proxy POSTs here with `grant_type=refresh_token` when the token is near expiry.                                                                                                       | _None_    |
+| `OAUTH_CLIENT_ID`             | OAuth client ID sent in refresh requests.                                                                                                                                                                                                                       | _None_    |
+| `OAUTH_PROXY_TARGET_URL`      | Overrides `PROXY_TARGET_URL` when OAuth mode is enabled. Useful when the OAuth provider also serves as the proxy target.                                                                                                                                        | _None_    |
+| `OAUTH_REFRESH_INTERVAL`      | Background refresh interval in minutes. `0` = disabled (token only refreshed on startup if expired).                                                                                                                                                            | `0`       |
+| `OAUTH_EAGER_REFRESH_SECONDS` | How many seconds before expiry to trigger a refresh.                                                                                                                                                                                                            | `300`     |
+| `OAUTH_FIELD_ACCESS`          | JSON key for the access token in `auth.json`.                                                                                                                                                                                                                   | `access`  |
+| `OAUTH_FIELD_REFRESH`         | JSON key for the refresh token in `auth.json`.                                                                                                                                                                                                                  | `refresh` |
+| `OAUTH_FIELD_EXPIRES`         | JSON key for the expiry timestamp in `auth.json`.                                                                                                                                                                                                               | `expires` |
 
 ---
 
 ## How to Run
 
 ### Native Go
+
 Build and run the proxy locally:
+
 ```bash
 # Set configuration env variables and run
 export PROXY_TARGET_URL="https://your-upstream-api.com"
@@ -69,7 +71,9 @@ go run main.go
 ```
 
 ### Docker / Podman
+
 Build a minimal, multi-stage Docker container:
+
 ```bash
 # Build the container
 docker build -t gatepass .
@@ -92,6 +96,7 @@ docker run -d \
 Some API gateways restrict access to official developer command-line tools by matching on specific headers (like `User-Agent` or version keys). You can bypass these restrictions by running this proxy to inject the expected headers.
 
 ### 1. Run the Proxy
+
 ```bash
 export PROXY_TARGET_URL="https://api.upstream-service.com"
 export PROXY_PORT="8318"
@@ -106,7 +111,9 @@ go run main.go
 ```
 
 ### 2. Configure Your Client
+
 Point your client tool's base URL to the local proxy:
+
 ```bash
 export UPSTREAM_BASE_URL="http://localhost:8318"
 export UPSTREAM_API_KEY="your-api-key"
@@ -120,6 +127,7 @@ cli-tool-run
 If you use a CLI tool that authenticates via OAuth (e.g., device code flow) and stores tokens in `auth.json`, the proxy can manage those tokens transparently.
 
 ### 1. Authenticate with the CLI Tool
+
 ```bash
 # Use the tool's built-in login (one-time)
 some-cli-tool account login
@@ -127,6 +135,7 @@ some-cli-tool account login
 ```
 
 ### 2. Run the Proxy
+
 ```bash
 export OAUTH_AUTH_PATH="$HOME/.local/share/some-tool/auth.json"
 export OAUTH_TOKEN_URL="https://example.com/auth/device/token"
@@ -140,19 +149,24 @@ export OAUTH_REFRESH_INTERVAL=30
 ```
 
 ### 3. Configure Your Client
+
 Point downstream services at the proxy. They don't need to know about OAuth:
+
 ```bash
 export ANTHROPIC_BASE_URL="http://localhost:8318"
 export DEFAULT_MODEL="anthropic/claude-sonnet-4"
 ```
 
 ### 4. Hot-Reload Tokens
+
 If the CLI tool refreshes its token externally, reload without restarting:
+
 ```bash
 kill -HUP $(pgrep gatepass)
 ```
 
 ### Expected `auth.json` Format
+
 ```json
 {
   "access": "tok_abc123",
@@ -162,6 +176,7 @@ kill -HUP $(pgrep gatepass)
 ```
 
 If your tool uses different field names, configure them:
+
 ```bash
 export OAUTH_FIELD_ACCESS=token
 export OAUTH_FIELD_REFRESH=refresh_token
@@ -201,6 +216,7 @@ WantedBy=default.target
 ```
 
 Enable and start the service:
+
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable --now gatepass
@@ -218,7 +234,7 @@ Description=Gatepass LLM Proxy Container
 After=network.target
 
 [Container]
-Image=ghcr.io/rat-s/gatepass:latest
+Image=ghcr.io/deadrat-in/gatepass:latest
 PublishPort=8318:8318
 # For system-wide (runs as root, Podman will auto-create the directory):
 Volume=/srv/gatepass/data:/data:Z
@@ -241,6 +257,7 @@ WantedBy=default.target
 ```
 
 Reload systemd to generate the service unit and start it:
+
 ```bash
 # For system-wide:
 sudo systemctl daemon-reload

@@ -1,4 +1,4 @@
-module github.com/Rat-S/gatepass
+module github.com/deadrat-in/gatepass
 
 go 1.25.0
 
