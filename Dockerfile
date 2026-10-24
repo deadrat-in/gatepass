@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.25-alpine3.24 AS builder
+FROM golang:1.27-alpine3.24 AS builder
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
